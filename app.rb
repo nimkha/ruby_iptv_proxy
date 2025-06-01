@@ -57,7 +57,9 @@ class IPTVProxyApp < Sinatra::Base
     n.gsub!(/\b(HD|FHD|UHD|4K|SD|UK|US|CA|AU|DE|PT|FR)\d*\b/i, '') # Case-insensitive removal of tags
     n.gsub!(/^(UK:|US:|CA:|PT:|ES:|TR:|LB:)/i, '') # Case-insensitive removal of prefixes
     n.gsub!(/[^\p{Alnum}\s]/u, '') # Remove punctuation, keep unicode alphanumeric. \p{Alnum} is language-agnostic.
-    n.gsub!(/\s+/, ' ').strip!
+    # Ensure n remains a string after gsub! before calling strip!
+    n = n.gsub(/\s+/, ' ') # Use non-bang gsub which always returns a string
+    n.strip! # Now strip! is safe as n is guaranteed to be a string
 
     # Iteratively remove trailing numbers if they appear to be stream indices
     previous_name_state = nil
