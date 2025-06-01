@@ -135,7 +135,7 @@ class IPTVProxyApp < Sinatra::Base
             if tvg_id_from_epg.nil? && fuzzy_matcher
               # Fuzzy match
               # find_best_with_score returns [match_string, score] or nil
-              best_match_result = fuzzy_matcher.find_best_with_score(current_channel_normalized_name)
+              best_match_result = fuzzy_matcher.find_with_score(current_channel_normalized_name)
               if best_match_result
                 best_match_norm_name, score = best_match_result
                 if score >= FUZZY_MATCH_THRESHOLD
