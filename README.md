@@ -40,3 +40,4 @@ This project is a Ruby-based IPTV proxy with channel grouping, failover, and EPG
 
 ```bash
 bundle exec puma -p 8000 config.ru
+```

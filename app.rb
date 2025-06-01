@@ -195,8 +195,20 @@ class IPTVProxyApp < Sinatra::Base
   # --- Initial Data Load ---
   def self.perform_initial_load
     log_info("Performing initial M3U and EPG load...")
-    entries = IPTVProxyApp.new.parse_m3u_files # Create instance to call instance methods
-    grouped_channels = IPTVProxyApp.new.group_channels(entries)
+    app_instance = IPTVProxyApp.new
+
+    # --- BEGIN DEBUGGING ---
+    log_info("DEBUG: app_instance.class: #{app_instance.class}")
+    log_info("DEBUG: app_instance.respond_to?(:parse_m3u_files): #{app_instance.respond_to?(:parse_m3u_files)}")
+    log_info("DEBUG: app_instance.respond_to?(:group_channels): #{app_instance.respond_to?(:group_channels)}")
+    log_info("DEBUG: IPTVProxyApp.instance_methods(false).include?(:parse_m3u_files): #{IPTVProxyApp.instance_methods(false).include?(:parse_m3u_files)}")
+    if app_instance.class.to_s != 'IPTVProxyApp'
+      log_warn("DEBUG: WARNING! app_instance is not of type IPTVProxyApp!")
+    end
+    # --- END DEBUGGING ---
+
+    entries = app_instance.parse_m3u_files
+    grouped_channels = app_instance.group_channels(entries)
 
     log_info("Loaded channels:")
     grouped_channels.each do |name, urls|
