@@ -47,8 +47,10 @@ class StreamChecker
       end
     end
 
-    return {} if groups_to_process.empty?
-    @log_info.call("No groups to process in get_active_streams.") if groups_to_process.empty?
+    if groups_to_process.empty?
+      @log_info.call("[StreamChecker] No groups to process in get_active_streams (either @stream_groups is empty or all groups have empty entry lists).")
+      return {}
+    end
 
 
     active_working_streams = {}

@@ -22,10 +22,10 @@ class IPTVProxyApp < Sinatra::Base
   # --- Logging Setup ---
   FileUtils.mkdir_p(LOG_FOLDER)
   $logger = Logger.new(LOG_FILE, 3, 1_000_000) # Rotate 3 files, 1MB each
-  $logger.level = Logger::INFO
+  $logger.level = Logger::DEBUG # Changed to DEBUG
   # Also log to STDOUT for Docker logs
   $stdout_logger = Logger.new(STDOUT)
-  $stdout_logger.level = Logger::INFO
+  $stdout_logger.level = Logger::DEBUG # Changed to DEBUG
 
   def self.log_info(message)
     $logger.info(message)
@@ -45,7 +45,7 @@ class IPTVProxyApp < Sinatra::Base
 
   def self.log_debug(message)
     $logger.debug(message)
-    # $stdout_logger.debug(message) # Optionally enable for console debug
+    $stdout_logger.debug(message) # Ensure debug messages also go to STDOUT
   end
 
 
