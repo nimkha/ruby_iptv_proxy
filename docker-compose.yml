@@ -1,0 +1,13 @@
+services:
+  iptv_proxy_ruby:
+    build: .
+    container_name: iptv_proxy_ruby
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./input:/usr/src/app/input # Mount your local M3U/EPG files
+      - ./logs:/usr/src/app/logs   # Mount logs directory
+    environment:
+      - RACK_ENV=production
+      # - WEB_CONCURRENCY=2 # Example: Number of Puma workers
+      # - RAILS_MAX_THREADS=5 # Example: Threads per Puma worker
