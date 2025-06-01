@@ -50,9 +50,9 @@ class IPTVProxyApp < Sinatra::Base
 
 
   # --- Helper Methods ---
-  def normalize_name(name)
+  def self.normalize_name(name)
     return "" if name.nil? || name.empty?
-    n = name.upcase
+    n = name.to_s.upcase # Ensure name is a string before upcasing
     n.gsub!(/\s*\(.*?\)|\[.*?\]/, '') # Remove content within parentheses or brackets
     n.gsub!(/\b(HD|FHD|UHD|4K|SD|UK|US|CA|AU|DE|PT|FR)\d*\b/i, '') # Case-insensitive removal of tags
     n.gsub!(/^(UK:|US:|CA:|PT:|ES:|TR:|LB:)/i, '') # Case-insensitive removal of prefixes
@@ -68,7 +68,7 @@ class IPTVProxyApp < Sinatra::Base
     n
   end
 
-  def load_epg_map(epg_path = EPG_INPUT_FILE)
+  def self.load_epg_map(epg_path = EPG_INPUT_FILE)
     epg_map = {}
     return epg_map unless File.exist?(epg_path)
     begin
@@ -79,11 +79,11 @@ class IPTVProxyApp < Sinatra::Base
         channel_node.xpath("display-name").each do |name_node|
           if name_node.content && !name_node.content.strip.empty?
             original_epg_name = name_node.content.strip
-            normalized_epg_name = normalize_name(original_epg_name)
+            normalized_epg_name = self.normalize_name(original_epg_name)
             if !epg_map.key?(normalized_epg_name)
               epg_map[normalized_epg_name] = tvg_id
             else
-              IPTVProxyApp.log_warn(
+              self.log_warn(
                 "EPG name collision: '#{original_epg_name}' and other(s) normalize to " \
                 "'#{normalized_epg_name}' (tvg-id: #{tvg_id}). " \
                 "Keeping tvg-id '#{epg_map[normalized_epg_name]}' from first encountered EPG entry."
@@ -92,16 +92,16 @@ class IPTVProxyApp < Sinatra::Base
           end
         end
       end
-      IPTVProxyApp.log_info("Loaded #{epg_map.length} EPG mappings (using normalized display names).")
+      self.log_info("Loaded #{epg_map.length} EPG mappings (using normalized display names).")
     rescue StandardError => e
-      IPTVProxyApp.log_error("EPG parsing error", e)
+      self.log_error("EPG parsing error", e)
     end
     epg_map
   end
 
-  def parse_m3u_files(m3u_folder = M3U_INPUT_FOLDER)
+  def self.parse_m3u_files(m3u_folder = M3U_INPUT_FOLDER)
     channel_entries = []
-    epg_map = load_epg_map
+    epg_map = self.load_epg_map
     normalized_epg_names_for_fuzz = epg_map.keys
 
     # Prepare fuzzy matcher if there are EPG names to match against
@@ -109,7 +109,7 @@ class IPTVProxyApp < Sinatra::Base
 
 
     Dir.glob(File.join(m3u_folder, "*.m3u")).each do |m3u_file|
-      IPTVProxyApp.log_info("Parsing M3U file: #{m3u_file}")
+      self.log_info("Parsing M3U file: #{m3u_file}")
       current_attrs = {}
       File.foreach(m3u_file, encoding: "utf-8") do |line|
         line.strip!
@@ -126,7 +126,7 @@ class IPTVProxyApp < Sinatra::Base
           
             name_to_normalize = current_attrs['display_name']
                      
-            current_channel_normalized_name = normalize_name(name_to_normalize)
+            current_channel_normalized_name = self.normalize_name(name_to_normalize)
             current_attrs['canonical_name'] = current_channel_normalized_name
 
             # EPG ID lookup
@@ -140,7 +140,7 @@ class IPTVProxyApp < Sinatra::Base
                 best_match_norm_name, score = best_match_result
                 if score >= FUZZY_MATCH_THRESHOLD
                     tvg_id_from_epg = epg_map[best_match_norm_name]
-                    IPTVProxyApp.log_info(
+                    self.log_info(
                         "Fuzzy EPG match for M3U: '#{current_attrs['display_name']}' (norm: '#{current_channel_normalized_name}') -> " \
                         "EPG norm: '#{best_match_norm_name}' (tvg-id: #{tvg_id_from_epg}, score: #{score.round(2)})"
                     )
@@ -151,7 +151,7 @@ class IPTVProxyApp < Sinatra::Base
             if tvg_id_from_epg
               current_attrs['tvg-id'] = tvg_id_from_epg
             elsif current_attrs['tvg-id'].nil? || current_attrs['tvg-id'].empty?
-              IPTVProxyApp.log_warn(
+              self.log_warn(
                 "No tvg-id found for M3U channel: '#{current_attrs['display_name']}' " \
                 "(norm: '#{current_channel_normalized_name}') after EPG lookup."
               )
@@ -164,19 +164,19 @@ class IPTVProxyApp < Sinatra::Base
         end
       end
     end
-    IPTVProxyApp.log_info("Parsed #{channel_entries.length} channel entries from M3U files.")
+    self.log_info("Parsed #{channel_entries.length} channel entries from M3U files.")
     channel_entries
   end
 
-  def group_channels(channel_entries)
+  def self.group_channels(channel_entries)
     grouped = Hash.new { |hash, key| hash[key] = [] }
     channel_entries.each do |entry|
       # Use canonical_name which has already been normalized
       canonical_name = entry['canonical_name']
       if canonical_name.nil? || canonical_name.empty?
         # Fallback, should ideally not happen if parse_m3u_files sets canonical_name
-        IPTVProxyApp.log_warn("Entry missing canonical_name, falling back to display_name: #{entry['display_name']}")
-        canonical_name = normalize_name(entry['display_name'] || "")
+        self.log_warn("Entry missing canonical_name, falling back to display_name: #{entry['display_name']}")
+        canonical_name = self.normalize_name(entry['display_name'] || "")
       end
       grouped[canonical_name] << entry
     end
@@ -195,20 +195,11 @@ class IPTVProxyApp < Sinatra::Base
   # --- Initial Data Load ---
   def self.perform_initial_load
     log_info("Performing initial M3U and EPG load...")
-    app_instance = IPTVProxyApp.new
+    # No longer need to create an instance here, call class methods directly
 
-    # --- BEGIN DEBUGGING ---
-    log_info("DEBUG: app_instance.class: #{app_instance.class}")
-    log_info("DEBUG: app_instance.respond_to?(:parse_m3u_files): #{app_instance.respond_to?(:parse_m3u_files)}")
-    log_info("DEBUG: app_instance.respond_to?(:group_channels): #{app_instance.respond_to?(:group_channels)}")
-    log_info("DEBUG: IPTVProxyApp.instance_methods(false).include?(:parse_m3u_files): #{IPTVProxyApp.instance_methods(false).include?(:parse_m3u_files)}")
-    if app_instance.class.to_s != 'IPTVProxyApp'
-      log_warn("DEBUG: WARNING! app_instance is not of type IPTVProxyApp!")
-    end
-    # --- END DEBUGGING ---
+    entries = self.parse_m3u_files # Call class method
+    grouped_channels = self.group_channels(entries) # Call class method
 
-    entries = app_instance.parse_m3u_files
-    grouped_channels = app_instance.group_channels(entries)
 
     log_info("Loaded channels:")
     grouped_channels.each do |name, urls|
@@ -226,10 +217,9 @@ class IPTVProxyApp < Sinatra::Base
         sleep AUTO_RELOAD_INTERVAL
         log_info("Attempting to reload M3U playlist and EPG data...")
         begin
-          # Need an instance of the app to call instance methods if they aren't class methods
-          app_instance = IPTVProxyApp.new
-          new_entries = app_instance.parse_m3u_files
-          new_grouped_channels = app_instance.group_channels(new_entries)
+          # Call class methods directly
+          new_entries = self.parse_m3u_files
+          new_grouped_channels = self.group_channels(new_entries)
           $checker.update_config({ "channels" => new_grouped_channels })
           log_info("M3U playlist and EPG data reloaded, checker updated.")
         rescue StandardError => e
@@ -301,7 +291,7 @@ class IPTVProxyApp < Sinatra::Base
   get '/failover/:channel' do
     channel_name = params['channel']
     $checker.mark_stream_failed(channel_name)
-    IPTVProxyApp.log_info("Failover triggered for channel: #{channel_name}")
+    self.class.log_info("Failover triggered for channel: #{channel_name}") # Use self.class or IPTVProxyApp
     "Failover triggered for channel: #{channel_name}\n"
   end
 
@@ -333,7 +323,7 @@ class IPTVProxyApp < Sinatra::Base
       end
       doc.to_xml
     rescue StandardError => e
-      IPTVProxyApp.log_error("EPG modification error", e)
+      self.class.log_error("EPG modification error", e) # Use self.class or IPTVProxyApp
       status 500
       "# Error processing EPG"
     end
