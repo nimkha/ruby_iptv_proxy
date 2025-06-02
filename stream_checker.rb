@@ -9,27 +9,53 @@ class StreamChecker
     @current_index = {}
     @lock = Mutex.new
 
+    @cache_lock = Mutex.new
+    @cached_active_streams = {}
+    @last_cache_update_time = Time.at(0) # Initialize to a very old time
+    @cache_ttl = 300 # Cache Time-To-Live in seconds (e.g., 5 minutes)
+    @full_check_lock = Mutex.new
+    @full_check_running_flag = false
+
     # Store logger methods
     @log_info = log_info_method
     @log_warn = log_warn_method
     @log_debug = log_debug_method
     @log_error = log_error_method
 
-    load_stream_groups
+    # Initial optimistic population and trigger async full check
+    _update_internal_structures_and_optimistic_cache
+    trigger_asynchronous_full_check
   end
 
   attr_reader :config # Allow app.rb to read config for EPG mapping
 
-  def load_stream_groups
-    @lock.synchronize do
-      @config["channels"].each do |name, urls|
-        @stream_groups[name] = urls
-        @current_index[name] ||= 0
+  def get_active_streams
+    @cache_lock.synchronize do
+      # Serve from cache if it's fresh and not empty
+      if Time.now - @last_cache_update_time < @cache_ttl && !@cached_active_streams.empty?
+        @log_info.call("[StreamChecker] Serving playlist from cache.")
+        return @cached_active_streams.dup # Return a copy to prevent external modification
       end
     end
+    # If cache is stale or empty, perform the checks and update the cache
+    _perform_stream_checks_and_update_cache
   end
 
-  def get_active_streams
+  def _perform_stream_checks_and_update_cache
+    can_run_check = false
+    @full_check_lock.synchronize do
+      if !@full_check_running_flag
+        @full_check_running_flag = true
+        can_run_check = true
+        @log_info.call("[StreamChecker] Starting full stream check and cache update process.")
+      else
+        @log_info.call("[StreamChecker] Full check already in progress. Call to _perform_stream_checks_and_update_cache skipped.")
+      end
+    end
+
+    # If a check is already running, return the current cache (it might be optimistic or the result of the last completed check)
+    return @cached_active_streams.dup unless can_run_check
+
     groups_to_process = {}
     @lock.synchronize do
       @stream_groups.each do |group_name, entries|
@@ -54,15 +80,15 @@ class StreamChecker
 
 
     active_working_streams = {}
-    max_workers_for_check = 10 # Adjust as needed
+    max_workers_for_check = 3 # Reduced from 10 to be gentler on providers
 
-    future_to_info = {}
+    # Store future objects along with info needed to process their results
+    futures_info = []
     group_check_results = Hash.new { |h, k| h[k] = Array.new(groups_to_process[k]["num_entries"], false) }
 
     pool = Concurrent::ThreadPoolExecutor.new(
       min_threads: 1,
       max_threads: max_workers_for_check,
-      max_queue: max_workers_for_check * 2, # Or some other sensible value
       fallback_policy: :caller_runs # If queue is full, submitting thread runs task
     )
 
@@ -71,26 +97,30 @@ class StreamChecker
         future = pool.post do
           _is_stream_working(entry)
         end
-        future_to_info[future] = { group_name: group_name, original_idx: original_idx, entry: entry }
+        futures_info << {
+          future: future,
+          group_name: group_name,
+          original_idx: original_idx,
+          entry_url: entry['url'] # For logging
+        }
       end
     end
     pool.shutdown # Signal that no more tasks will be submitted
     pool.wait_for_termination # Wait for all tasks to complete
 
-    future_to_info.each do |future, info|
-      group_name = info[:group_name]
-      original_idx = info[:original_idx]
-      entry_for_log = info[:entry]
+    futures_info.each do |f_info|
+      group_name = f_info[:group_name]
+      original_idx = f_info[:original_idx]
+      entry_url_for_log = f_info[:entry_url]
       begin
-        is_working = future.value # Get result from completed future
-        group_check_results[group_name][original_idx] = is_working if is_working != nil # future.value can be nil if task raised error and wasn't caught
-        @log_debug.call("Parallel check: Stream #{entry_for_log['url']} for group '#{group_name}' (idx #{original_idx}) is working.") if is_working
+        is_working = f_info[:future].value # Get result from completed future (true, false, or raises error)
+        group_check_results[group_name][original_idx] = is_working
+        @log_debug.call("Parallel check: Stream #{entry_url_for_log} for group '#{group_name}' (idx #{original_idx}) is working.") if is_working
       rescue StandardError => exc # Catch errors from the future's execution
-        @log_error.call("Exception during parallel check for stream #{entry_for_log['url'] || 'N/A'} in group #{group_name}: #{exc}")
+        @log_error.call("Exception during parallel check for stream #{entry_url_for_log || 'N/A'} in group #{group_name}: #{exc.class} - #{exc.message}")
         group_check_results[group_name][original_idx] = false # Ensure it's marked as not working
       end
     end
-    
     new_current_indices = {}
     groups_to_process.each do |group_name, group_data|
       entries = group_data["entries"]
@@ -126,17 +156,33 @@ class StreamChecker
         end
       end
     end
-    active_working_streams
+
+    @cache_lock.synchronize do
+      @cached_active_streams = active_working_streams.dup
+      @last_cache_update_time = Time.now
+      @log_info.call("[StreamChecker] Playlist cache updated after performing checks.")
+    end
+
+    # Ensure the flag is reset regardless of how the method exits
+    @full_check_lock.synchronize do
+      @full_check_running_flag = false
+      @log_info.call("[StreamChecker] Full stream check and cache update process finished.")
+    end
+    return @cached_active_streams.dup # Return a copy
   end
 
   def mark_stream_failed(channel_name)
+    made_change = false
     @lock.synchronize do
       return unless @stream_groups.key?(channel_name)
+      return if @stream_groups[channel_name].nil? || @stream_groups[channel_name].empty?
       current = @current_index[channel_name] || 0
       total = @stream_groups[channel_name].length
       if total > 0
         @current_index[channel_name] = (current + 1) % total
         @log_info.call("[FAILOVER] #{channel_name} -> Switched to index #{@current_index[channel_name]}")
+        invalidate_cache # Invalidate cache as the active stream might change
+        made_change = true
       else
         @log_warn.call("[FAILOVER] Attempted to failover channel #{channel_name}, but it has no streams.")
       end
@@ -144,22 +190,51 @@ class StreamChecker
   end
 
   def update_config(new_app_config)
-    @lock.synchronize do
+    @lock.synchronize do # Protect @config write
       @config = new_app_config
-      new_stream_groups = {}
-      old_current_index = @current_index.dup
-      @current_index = {}
+    end
+    _update_internal_structures_and_optimistic_cache
+    trigger_asynchronous_full_check # This will also invalidate and then rebuild the cache with actual checks
+    @log_info.call("[StreamChecker] Configuration updated. Optimistic cache populated. Async full check triggered.")
+  end
+  def invalidate_cache
+    @cache_lock.synchronize do
+      @cached_active_streams = {}
+      @last_cache_update_time = Time.at(0) # Mark as very old
+      @log_info.call("[StreamChecker] Playlist cache invalidated.")
+    end
+  end
+
+  # New private method to handle the logic shared by initialize and update_config
+  private def _update_internal_structures_and_optimistic_cache
+    new_stream_groups = {}
+    new_current_index = {}
+    optimistic_streams_for_cache = {}
+
+    @lock.synchronize do # Protect access to @config and modification of internal structures
+      old_current_index_snapshot = @current_index.dup # Snapshot before clearing
 
       (@config["channels"] || {}).each do |group_name, entries_list|
+        next if entries_list.nil? || entries_list.empty?
+
         new_stream_groups[group_name] = entries_list
-        if old_current_index.key?(group_name) && old_current_index[group_name] < entries_list.length
-          @current_index[group_name] = old_current_index[group_name]
-        else
-          @current_index[group_name] = 0
-        end
+        
+        # Preserve old index if valid for the new list, otherwise default to 0
+        idx = old_current_index_snapshot[group_name] || 0
+        idx = 0 if idx >= entries_list.length || idx < 0
+        new_current_index[group_name] = idx
+        
+        optimistic_streams_for_cache[group_name] = entries_list[idx] if entries_list[idx]
       end
+      
       @stream_groups = new_stream_groups
-      @log_info.call("StreamChecker configuration updated.")
+      @current_index = new_current_index
+    end
+
+    @cache_lock.synchronize do
+      @cached_active_streams = optimistic_streams_for_cache
+      @last_cache_update_time = Time.now # Mark optimistic cache as fresh
+      @log_info.call("[StreamChecker] Optimistic playlist cache populated/updated with default streams.")
     end
   end
 
@@ -187,6 +262,17 @@ class StreamChecker
   end
 
   private
+
+  def trigger_asynchronous_full_check
+    @log_info.call("[StreamChecker] Triggering asynchronous full stream check and cache update...")
+    Concurrent.global_io_executor.post do
+      begin
+        _perform_stream_checks_and_update_cache
+      rescue StandardError => e
+        @log_error.call("[StreamChecker] Asynchronous full check failed: #{e.class} - #{e.message}\n#{e.backtrace.join("\n")}")
+      end
+    end
+  end
 
   def _is_stream_working(entry)
     url = entry.is_a?(Hash) ? entry['url'] : entry
