@@ -1,14 +1,17 @@
+version: '3.8'
+
 services:
-  iptv_proxy_ruby:
+  iptv-proxy:
     build: .
-    container_name: iptv_proxy_ruby
-    restart: unless-stopped
+    container_name: iptv_proxy_app
     ports:
       - "8000:8000"
     volumes:
-      - ./input:/usr/src/app/input # Mount your local M3U/EPG files
-      - ./logs:/usr/src/app/logs   # Mount logs directory
-    environment:
-      - RACK_ENV=production
-      # - WEB_CONCURRENCY=2 # Example: Number of Puma workers
-      # - RAILS_MAX_THREADS=5 # Example: Threads per Puma worker
+      - ./input:/usr/src/app/input
+      - ./logs:/usr/src/app/logs
+      # For development, you might want to mount the whole app directory
+      # to see code changes live (requires Puma/Sinatra to be set up for reloading):
+      # - .:/usr/src/app
+    restart: unless-stopped
+    # environment:
+    #   - RACK_ENV=production # Optional: set environment

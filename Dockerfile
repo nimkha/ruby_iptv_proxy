@@ -1,37 +1,32 @@
 # Use an official Ruby runtime as a parent image
-FROM ruby:3.1-slim
+FROM ruby:3.3-slim
 
 # Set the working directory in the container
 WORKDIR /usr/src/app
 
-# Install system dependencies that some gems might need (e.g., nokogiri)
-RUN apt-get update -qq && apt-get install -y build-essential libxml2-dev libxslt1-dev
+# Install dependencies for Nokogiri and other gems that might need native extensions
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends \
+    build-essential \
+    git \
+    libxml2-dev \
+    libxslt1-dev \
+    pkg-config && \
+    rm -rf /var/lib/apt/lists/*
 
-# Install Bundler
-RUN gem install bundler
-
-# Copy the Gemfile and Gemfile.lock into the container
+# Copy the Gemfile and Gemfile.lock (or Gemfile.builder if it generates Gemfile.lock)
 COPY Gemfile Gemfile.lock ./
+# If you are using Gemfile.builder to generate Gemfile.lock, you might need:
+# COPY Gemfile.builder ./
 
-# Install project gems
+# Install gems
 RUN bundle install --jobs $(nproc) --retry 3
 
-# Copy the rest of the application code into the container
+# Copy the rest of the application code
 COPY . .
 
-# Make port 8000 available to the world outside this container
+# Expose port 8000 to the outside world
 EXPOSE 8000
 
-# Define the command to run the application
-# Using Puma as the web server, configured via config.ru
-CMD ["bundle", "exec", "puma", "-C", "config/puma.rb", "config.ru"]
-
-# Create a default puma config if it doesn't exist for simpler startup
-# You can customize this file further if needed.
-RUN mkdir -p config && \
-    echo "port ENV.fetch('PORT', 8000)" > config/puma.rb && \
-    echo "workers ENV.fetch('WEB_CONCURRENCY', 0)" >> config/puma.rb && \
-    echo "threads_count = ENV.fetch('RAILS_MAX_THREADS', 5).to_i" >> config/puma.rb && \
-    echo "threads threads_count, threads_count" >> config/puma.rb && \
-    echo "preload_app!" >> config/puma.rb && \
-    echo "environment ENV.fetch('RACK_ENV', 'production')" >> config/puma.rb
+# The main command to run when the container starts
+CMD ["bundle", "exec", "puma", "config.ru"]

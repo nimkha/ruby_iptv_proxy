@@ -1,43 +1,92 @@
-# IPTV Proxy (Ruby Version)
+# Ruby IPTV Proxy
 
-This project is a Ruby-based IPTV proxy with channel grouping, failover, and EPG support.
+This application acts as a proxy for IPTV streams, allowing for channel grouping, EPG (XMLTV) manipulation, and stream failover.
 
 ## Features
 
-- Parses M3U playlists and XMLTV EPG files.
-- Normalizes and groups channels with similar names.
-- Provides a `/playlist.m3u` URL with consistently numbered channels.
-- Actively checks stream health and serves only working streams.
-- Automatic failover to the next stream in a group if the current one fails.
-- Background monitoring of streams.
-- Automatic reloading of M3U and EPG data.
-- Modifies EPG display names to match normalized/aliased channel names.
+*   Parses M3U playlists.
+*   Groups channels by a canonical name derived from M3U attributes.
+*   Integrates with an XMLTV EPG file, mapping EPG data to channels using direct and fuzzy name matching.
+*   Provides a `/playlist.m3u` endpoint with failover: if a stream for a channel group is down, it attempts to serve the next available stream for that group.
+*   Provides an `/epg.xml` endpoint with channel names updated to match the canonical names used in the playlist.
+*   Background stream checking and M3U/EPG auto-reloading.
 
-## Prerequisites
+## Running the Application (Non-Docker)
 
-- Ruby (e.g., version 3.1 or later)
-- Bundler (`gem install bundler`)
+### Prerequisites
 
-## Setup
+*   Ruby (e.g., version 3.1 or later)
+*   Bundler (`gem install bundler`)
 
-1.  **Clone the repository (or extract the files to a directory named `ruby_iptv_proxy`).**
-2.  **Navigate to the project directory:**
+### Setup
+
+1.  **Clone the Repository:**
     ```bash
+    git clone <your-repository-url> # Or extract files to a directory
     cd ruby_iptv_proxy
     ```
-3.  **Install dependencies:**
+
+2.  **Install Dependencies:**
     ```bash
     bundle install
     ```
-4.  **Prepare Input Files:**
-    - Create an `input` directory if it doesn't exist.
-    - Place your M3U playlist files (e.g., `provider1.m3u`) inside the `input` directory.
-    - Place your EPG XML file, named `guide.xml`, inside the `input` directory.
 
-## Running the Application
+3.  **Prepare Input Files:**
+    *   Create an `input` directory in the project root: `mkdir -p input`
+    *   Place your M3U playlist files (e.g., `primary.m3u`, `secondary.m3u`) inside the `input` directory.
+    *   Place your XMLTV EPG file, named `guide.xml` by default (see `EPG_INPUT_FILE` in `app.rb`), inside the `input` directory.
 
-### Directly with Puma (Recommended for development/production)
+### Running the Application
 
+Directly with Puma (Recommended for development/production):
 ```bash
 bundle exec puma -p 8000 config.ru
 ```
+
+## Running with Docker Compose
+
+Using Docker Compose is the recommended way to run this application.
+
+### Prerequisites
+
+*   Docker installed.
+*   Docker Compose installed.
+
+### Steps
+
+1.  **Clone the Repository:**
+    ```bash
+    git clone <your-repository-url>
+    cd ruby_iptv_proxy
+    ```
+
+2.  **Prepare Input Files:**
+    *   Create an `input` directory in the project root if it doesn't exist: `mkdir -p input`
+    *   Place your M3U playlist files (e.g., `primary.m3u`, `secondary.m3u`) inside the `input` directory.
+    *   Place your XMLTV EPG file (e.g., `guide.xml`) inside the `input` directory. The application expects it to be named `guide.xml` by default (see `EPG_INPUT_FILE` in `app.rb`).
+
+3.  **Build and Run the Container:**
+    ```bash
+    docker-compose up -d
+    ```
+    This command will build the Docker image (if it's the first time or if the `Dockerfile` changed) and start the application container in detached mode.
+
+4.  **Accessing the Application:**
+    *   Playlist: `http://localhost:8000/playlist.m3u`
+    *   EPG: `http://localhost:8000/epg.xml`
+
+5.  **Viewing Logs:**
+    *   To view the application logs from the container:
+        ```bash
+        docker-compose logs -f iptv-proxy
+        ```
+    *   Log files are also persisted in the `logs` directory on your host machine.
+
+6.  **Stopping the Application:**
+    ```bash
+    docker-compose down
+    ```
+
+---
+
+*(Other sections of your README like Setup, Usage, Configuration can go here)*
