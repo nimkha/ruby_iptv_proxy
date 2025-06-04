@@ -29,4 +29,4 @@ COPY . .
 EXPOSE 8000
 
 # The main command to run when the container starts
-CMD ["bundle", "exec", "puma", "config.ru"]
+CMD ["bundle", "exec", "puma", "-C", "config/puma.rb"]

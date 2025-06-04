@@ -41,6 +41,7 @@ This application acts as a proxy for IPTV streams, allowing for channel grouping
 Directly with Puma (Recommended for development/production):
 ```bash
 bundle exec puma -p 8000 config.ru
+bundle exec puma -C config/puma.rb
 ```
 
 ## Running with Docker Compose
