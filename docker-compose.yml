@@ -5,8 +5,8 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./input:/usr/src/app/input
-      - ./logs:/usr/src/app/logs
+      - ./input:/usr/src/app/input:z
+      - ./logs:/usr/src/app/logs:z
       # For development, you might want to mount the whole app directory
       # to see code changes live (requires Puma/Sinatra to be set up for reloading):
       # - .:/usr/src/app
