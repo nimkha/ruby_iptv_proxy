@@ -1,17 +1,19 @@
 # Use an official Ruby runtime as a parent image
-FROM ruby:3.3-slim
+FROM ruby:3.3
 
 # Set the working directory in the container
 WORKDIR /usr/src/app
 
 # Install dependencies for Nokogiri and other gems that might need native extensions
 RUN apt-get update -qq && \
-    apt-get install -y --no-install-recommends \
+    apt-get install -y --no-install-recommends gosu \
     build-essential \
     git \
     libxml2-dev \
     libxslt1-dev \
     pkg-config && \
+    # Verify gosu installation (optional, good for debugging) \
+    gosu --version && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy the Gemfile and Gemfile.lock (or Gemfile.builder if it generates Gemfile.lock)

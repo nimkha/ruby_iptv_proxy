@@ -4,12 +4,12 @@ require 'fileutils'
 # The `threads`method setting takes two numbers: a minimum and maximum.
 # Any libraries that use thread pools should be configured to match
 # the maximum value specified for Puma. Default is 0, 5
-threads_count = ENV.fetch("PUMA_MAX_THREADS") { 5 }.to_i # Use a more generic ENV var if preferred
+threads_count = ENV.fetch("PUMA_MAX_THREADS") { 5 }.to_i
 threads threads_count, threads_count
  
 # The port to listen on.
 puma_port = ENV.fetch("PORT") { 8000 }.to_i
-environment ENV.fetch("RACK_ENV") { "production" } # Default to production for Docker
+environment ENV.fetch("RACK_ENV") { "production" } # Ensure this matches docker-compose.yml or remove from one
 app_dir = File.expand_path("../..", __FILE__) # Define the application directory
 directory app_dir # Instruct Puma to change to this directory before starting
 
