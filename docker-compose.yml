@@ -1,3 +1,4 @@
+services:
   iptv-proxy:
     build: .
     container_name: iptv_proxy_app
