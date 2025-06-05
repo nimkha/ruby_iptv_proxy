@@ -25,8 +25,14 @@ RUN bundle install --jobs $(nproc) --retry 3
 # Copy the rest of the application code
 COPY . .
 
-# Expose port 8000 to the outside world
+# Create log and tmp directories. Entrypoint will handle permissions.
+RUN mkdir -p logs tmp/pids
+
 EXPOSE 8000
 
+# Copy and set up the entrypoint script
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+ENTRYPOINT ["docker-entrypoint.sh"]
 # The main command to run when the container starts
 CMD ["bundle", "exec", "puma", "-C", "config/puma.rb"]

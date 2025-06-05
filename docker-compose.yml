@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   iptv-proxy:
     build: .
@@ -13,5 +11,5 @@ services:
       # to see code changes live (requires Puma/Sinatra to be set up for reloading):
       # - .:/usr/src/app
     restart: unless-stopped
-    # environment:
-    #   - RACK_ENV=production # Optional: set environment
+    environment:
+      - RACK_ENV=production # Set environment to production

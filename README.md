@@ -67,8 +67,13 @@ Using Docker Compose is the recommended way to run this application.
     *   Place your XMLTV EPG file (e.g., `guide.xml`) inside the `input` directory. The application expects it to be named `guide.xml` by default (see `EPG_INPUT_FILE` in `app.rb`).
 
 3.  **Build and Run the Container:**
+
     ```bash
-    docker-compose up -d
+    docker compose build
+    ```
+
+    ```bash
+    docker compose up -d
     ```
     This command will build the Docker image (if it's the first time or if the `Dockerfile` changed) and start the application container in detached mode.
 
@@ -79,15 +84,13 @@ Using Docker Compose is the recommended way to run this application.
 5.  **Viewing Logs:**
     *   To view the application logs from the container:
         ```bash
-        docker-compose logs -f iptv-proxy
+        docker compose logs -f iptv-proxy
         ```
     *   Log files are also persisted in the `logs` directory on your host machine.
 
 6.  **Stopping the Application:**
     ```bash
-    docker-compose down
+    docker compose down
     ```
 
 ---
-
-*(Other sections of your README like Setup, Usage, Configuration can go here)*
