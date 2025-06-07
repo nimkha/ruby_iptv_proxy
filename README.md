@@ -40,7 +40,10 @@ This application acts as a proxy for IPTV streams, allowing for channel grouping
 
 Directly with Puma (Recommended for development/production):
 ```bash
+# To run with settings defined in app.rb (default port 8000)
 bundle exec puma -p 8000 config.ru
+
+# To run with settings defined in config/puma.rb (recommended for more control)
 bundle exec puma -C config/puma.rb
 ```
 
