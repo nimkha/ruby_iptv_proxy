@@ -18,6 +18,11 @@ class IPTVProxyApp < Sinatra::Base
   LOG_FILE = File.join(LOG_FOLDER, 'iptv_proxy.log')
   AUTO_RELOAD_INTERVAL = 172_800 # seconds (48 hours)
   BACKGROUND_MONITOR_INTERVAL = 60 # seconds
+  # Stream Checker specific configurations
+  STREAM_CHECK_TIMEOUT_SECONDS = 10
+  STREAM_CHECK_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+  STREAM_CHECK_MAX_WORKERS = 3
+  PLAYLIST_CACHE_TTL_SECONDS = 300
 
   # --- Logging Setup ---
   FileUtils.mkdir_p(LOG_FOLDER)
@@ -191,8 +196,15 @@ class IPTVProxyApp < Sinatra::Base
   set :server, :puma
 
   # Global checker instance
-  # Initialize with empty data; will be populated by initial load or auto-reloader
-  $checker = StreamChecker.new({ "channels" => {} }, method(:log_info), method(:log_warn), method(:log_debug), method(:log_error))
+  initial_checker_config = {
+    "channels" => {},
+    "stream_check_timeout_seconds" => STREAM_CHECK_TIMEOUT_SECONDS,
+    "stream_check_user_agent" => STREAM_CHECK_USER_AGENT,
+    "stream_check_max_workers" => STREAM_CHECK_MAX_WORKERS,
+    "cache_ttl_seconds" => PLAYLIST_CACHE_TTL_SECONDS
+  }
+  $checker = StreamChecker.new(initial_checker_config, method(:log_info), method(:log_warn), method(:log_debug), method(:log_error))
+
 
   # --- Initial Data Load ---
   def self.perform_initial_load
@@ -207,7 +219,15 @@ class IPTVProxyApp < Sinatra::Base
     grouped_channels.each do |name, urls|
       log_info("- #{name}: #{urls.length} stream(s)")
     end
-    $checker.update_config({ "channels" => grouped_channels })
+
+    updated_checker_config = {
+      "channels" => grouped_channels,
+      "stream_check_timeout_seconds" => STREAM_CHECK_TIMEOUT_SECONDS,
+      "stream_check_user_agent" => STREAM_CHECK_USER_AGENT,
+      "stream_check_max_workers" => STREAM_CHECK_MAX_WORKERS,
+      "cache_ttl_seconds" => PLAYLIST_CACHE_TTL_SECONDS
+    }
+    $checker.update_config(updated_checker_config)
     log_info("Initial load complete. Checker updated.")
   end
 
@@ -222,7 +242,14 @@ class IPTVProxyApp < Sinatra::Base
           # Call class methods directly
           new_entries = self.parse_m3u_files
           new_grouped_channels = self.group_channels(new_entries)
-          $checker.update_config({ "channels" => new_grouped_channels })
+          reloaded_checker_config = {
+            "channels" => new_grouped_channels,
+            "stream_check_timeout_seconds" => STREAM_CHECK_TIMEOUT_SECONDS,
+            "stream_check_user_agent" => STREAM_CHECK_USER_AGENT,
+            "stream_check_max_workers" => STREAM_CHECK_MAX_WORKERS,
+            "cache_ttl_seconds" => PLAYLIST_CACHE_TTL_SECONDS
+          }
+          $checker.update_config(reloaded_checker_config)
           log_info("M3U playlist and EPG data reloaded, checker updated.")
         rescue StandardError => e
           log_error("Error during auto-reload", e)

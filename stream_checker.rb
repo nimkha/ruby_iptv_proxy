@@ -12,7 +12,7 @@ class StreamChecker
     @cache_lock = Mutex.new
     @cached_active_streams = {}
     @last_cache_update_time = Time.at(0) # Initialize to a very old time
-    @cache_ttl = 300 # Cache Time-To-Live in seconds (e.g., 5 minutes)
+    @cache_ttl = @config.fetch("cache_ttl_seconds", 300).to_i
     @full_check_lock = Mutex.new
     @full_check_running_flag = false
 
@@ -80,7 +80,7 @@ class StreamChecker
 
 
     active_working_streams = {}
-    max_workers_for_check = 3 # Reduced from 10 to be gentler on providers
+    max_workers_for_check = @config.fetch("stream_check_max_workers", 3).to_i # Ensure this is an integer
 
     # Store future objects along with info needed to process their results
     futures_info = []
@@ -92,6 +92,8 @@ class StreamChecker
       fallback_policy: :caller_runs # If queue is full, submitting thread runs task
     )
 
+    total_streams_to_check = groups_to_process.sum { |_, gd| gd["entries"].length }
+    @log_info.call("[StreamChecker] Submitting #{total_streams_to_check} stream checks to thread pool (max_workers: #{max_workers_for_check})...")
     groups_to_process.each do |group_name, group_data|
       group_data["entries"].each_with_index do |entry, original_idx|
         future = pool.post do
@@ -105,8 +107,11 @@ class StreamChecker
         }
       end
     end
+    @log_info.call("[StreamChecker] All stream check tasks submitted. Shutting down pool...")
     pool.shutdown # Signal that no more tasks will be submitted
+    @log_info.call("[StreamChecker] Waiting for thread pool termination (this may take a while for many streams)...")
     pool.wait_for_termination # Wait for all tasks to complete
+    @log_info.call("[StreamChecker] Thread pool terminated. Processing #{futures_info.length} results...")
 
     futures_info.each do |f_info|
       group_name = f_info[:group_name]
@@ -193,6 +198,7 @@ class StreamChecker
     @lock.synchronize do # Protect @config write
       @config = new_app_config
     end
+    @cache_ttl = @config.fetch("cache_ttl_seconds", 300).to_i # Update TTL from new config
     _update_internal_structures_and_optimistic_cache
     trigger_asynchronous_full_check # This will also invalidate and then rebuild the cache with actual checks
     @log_info.call("[StreamChecker] Configuration updated. Optimistic cache populated. Async full check triggered.")
